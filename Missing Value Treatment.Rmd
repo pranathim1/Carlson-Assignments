@@ -1,0 +1,222 @@
+# Homework 1: Basic Data Wrangling
+
+Please use the pipe operator to represent composite tasks. 
+
+1. Load the dataset `chicago.rds` from moodle using the readRDS() function of R into a dataframe called `chicago`. Don't display the code to laod the file in the knitted document. The dataset contains air pollution data from Chicago from a period Jan 1987 till end of 2005. To learn more about these measures visit http://www.airnow.gov/index.cfm?action=aqibasics.particle   
+```{r,include=FALSE}
+library (dplyr)
+library(ggplot2)
+library(zoo)
+```
+
+```{r, echo = FALSE}
+chicago <- readRDS('C:/Users/Pranathi/Desktop/MSBA/Fall/Exploratory data analytics/Assignment 1/chicago.rds')
+```
+
+2. Make sure the dataset is a dplyr object from here on. Perform basic data cleansing activities that deal with outliers, data entry errors and missing values if any.
+
+```{r}
+chicago_table <- tbl_df(chicago)
+summary(chicago_table)
+```
+
+Missing value count: 
+tmpd - 1
+dptp - 2
+pm25tmean2 - 4447
+pm10tmean2 - 242
+Total number of Records - 6940
+
+Missing Value Treatment:
+1. For Temperature and dew point temperature, missing values are replaced with mean of previous and next day's temperature/dew point temperature as we can safely assume that the temperature doesn't change drastically within a day's time
+2. For PM2.5, linear regression is used to predict the missing values
+Regression has been used as other techniques are not accurate given that 64% of the records are missing values. Below are the reasons why other techniques cannot be used
+a) mean of nearby values - most of the records will not have nearby values 
+b) omitting -more than 50% data loss 
+c) Replacing with column mean - Loss of variation in data as ~60% of the data will be replaced with a single value
+
+```{r,warning=FALSE}
+chicago_table <- arrange(chicago_table,date)
+
+# Replacing missing values in Temperature and dew point temperature with mean of nearby values
+chicago_table$tmpd <-  (na.locf(chicago_table$tmpd) + rev(na.locf(rev(chicago_table$tmpd))))/2
+chicago_table$dptp <- (na.locf(chicago_table$dptp) + rev(na.locf(rev(chicago_table$dptp))))/2
+
+#Outlier Inspection
+ggplot(chicago_table) + geom_boxplot(aes(x=city,y=pm25tmean2))
+ggplot(chicago_table) + geom_boxplot(aes(x=city,y=pm10tmean2))
+ggplot(chicago_table) + geom_boxplot(aes(x=city,y=o3tmean2))
+ggplot(chicago_table) + geom_boxplot(aes(x=city,y=no2tmean2))
+
+#Replace outliers with NA to create a training dataset
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = na.rm, ...)
+  H <- 3 * IQR(x, na.rm = na.rm)
+  y <- x
+  y[x < (qnt[1] - H)] <- NA
+  y[x > (qnt[2] + H)] <- NA
+  y
+}
+
+chicago_outliers <- chicago_table
+chicago_outliers$tmpd <- remove_outliers(chicago_outliers$tmpd)
+chicago_outliers$dptp <- remove_outliers(chicago_outliers$dptp)
+chicago_outliers$pm25tmean2 <- remove_outliers(chicago_outliers$pm25tmean2)
+chicago_outliers$pm10tmean2 <- remove_outliers(chicago_outliers$pm10tmean2)
+chicago_outliers$o3tmean2 <- remove_outliers(chicago_outliers$o3tmean2)
+chicago_outliers$no2tmean2 <- remove_outliers(chicago_outliers$no2tmean2)
+
+#Train data set - remove missing values and outliers
+train_data <- na.omit(chicago_outliers)
+
+#model to predict pm10tmean2 
+m1_pm10 <-lm(formula = pm10tmean2 ~ tmpd+dptp+o3tmean2+no2tmean2, data = train_data)
+summary(m1_pm10)
+
+test_data<-chicago_table %>%
+  filter(is.na(pm10tmean2))
+test_data$pm10tmean2 <- predict(m1_pm10,newdata = test_data)
+
+chicago_table_pm10 <- rbind(chicago_table,test_data)
+
+#model to predict pm25tmean2
+m2_pm25 <- lm(pm25tmean2 ~ tmpd+dptp+o3tmean2+no2tmean2+pm10tmean2,data = train_data)
+summary(m2_pm25)
+
+test_data_1<-chicago_table_pm10 %>%
+  filter(is.na(pm25tmean2))
+
+test_data_1$pm25tmean2 <- predict(m2_pm25,newdata = test_data_1)
+
+chicago_clean <- na.omit(rbind(chicago_table,test_data,test_data_1))
+
+# Outlier Treatment - capping
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = na.rm, ...)
+  H <- 3 * IQR(x, na.rm = na.rm)
+  y <- x
+  y[x < (qnt[1] - H)] <- qnt[1] - H
+  y[x > (qnt[2] + H)] <- qnt[2] + H
+  y
+}
+
+chicago_clean$tmpd <- remove_outliers(chicago_clean$tmpd)
+chicago_clean$dptp <- remove_outliers(chicago_clean$dptp)
+chicago_clean$pm25tmean2 <- remove_outliers(chicago_clean$pm25tmean2)
+chicago_clean$pm10tmean2 <- remove_outliers(chicago_clean$pm10tmean2)
+chicago_clean$o3tmean2 <- remove_outliers(chicago_clean$o3tmean2)
+chicago_clean$no2tmean2 <- remove_outliers(chicago_clean$no2tmean2)
+```
+
+3. Extract and display those rows (dplyr will display first 10 rows and that is fine) that have a 'seemingly' high value of PM2.5. Note, I am deliberately using managerial speak here when I say 'seemingly' but its your job to translate this into something convincing. Think about dsiplaying 10 rows that have most meaning.
+
+```{r,warning=FALSE}
+ggplot(chicago_clean,aes(pm25tmean2))+geom_histogram()
+```
+
+We can see that pm25tmean follows a normal distribution. So ~99.7% values lie between mean+/-3*sigma. So, pm25tmean2 values which are more than 3 standard deviations away from the mean are considered as high values
+
+```{r}
+cutoff <- mean(chicago_clean$pm25tmean2) + 3*sd(chicago_clean$pm25tmean2)
+
+high_pm25 <- chicago_clean %>%
+                   filter(pm25tmean2>cutoff)
+
+high_pm25
+
+```
+
+4. Explore this subset of high PM2.5 level days further and see if other factors in the data could be linked to these high PM2.5 days. What queries would you run?
+
+```{r}
+ggplot(high_pm25, aes(pm10tmean2,pm25tmean2))+geom_line(size=1) 
+```
+
+```{r}
+ggplot(high_pm25, aes(tmpd,pm25tmean2))+geom_line(size=1) 
+```
+
+```{r}
+ggplot(high_pm25, aes(dptp,pm25tmean2))+geom_line(size=1) 
+```
+
+```{r}
+ggplot(high_pm25, aes(o3tmean2,pm25tmean2))+geom_line(size=1) 
+```
+
+```{r}
+ggplot(high_pm25, aes(no2tmean2,pm25tmean2))+geom_line(size=1) 
+```
+No link between high pm25 and other factors exists
+
+##Correlation comparison
+```{r}
+cor(high_pm25[sapply(high_pm25, is.numeric)],use = "pairwise.complete.obs")
+```
+
+```{r}
+cor(chicago_table[sapply(chicago_table, is.numeric)],use = "pairwise.complete.obs")
+```
+In the original data, pm25 is ~60% correlated with pm25 while in high pm25 value data the correlation is only 18%.Even in the case of other factors,the amount of correlation seems to be less compared to that of the original data.
+
+5. Create two new columns that normalize the PM2.5 column using z-score and the PM10 column using min-max normalization
+
+```{r}
+chicago_clean <- chicago_clean %>%
+  mutate(pm25_norm = (pm25tmean2-mean(pm25tmean2))/sd(pm25tmean2),
+         pm10_norm = (pm10tmean2-min(pm10tmean2))/(max(pm10tmean2)
+                                                   -min(pm10tmean2)))
+```
+
+6.  Using the command`year = as.POSIXlt(chicago$date)$year + 1900` add a new column for the year of the observation.
+
+```{r}
+chicago_clean$year = as.POSIXlt(chicago_clean$date)$year + 1900
+```
+
+7. Present key summary statistics of the pollutants by year 
+
+```{r}
+pm25_stats <- chicago_clean %>%
+  group_by(year) %>% 
+  summarise(avg = mean(pm25tmean2),median(pm25tmean2),max(pm25tmean2),min(pm25tmean2),sd(pm25tmean2))
+
+pm10_stats <- chicago_clean %>%
+  group_by(year) %>% 
+  summarise(avg = mean(pm10tmean2),median(pm10tmean2),max(pm10tmean2),
+            min(pm10tmean2),sd(pm10tmean2))
+
+o3_stats <- chicago_clean %>%
+  group_by(year) %>% 
+  summarise(avg = mean(o3tmean2),median(o3tmean2),max(o3tmean2),min(o3tmean2),
+            sd(o3tmean2))
+
+no2_stats <- chicago_clean %>%
+  group_by(year) %>% 
+  summarise(avg = mean(no2tmean2),median(no2tmean2),max(no2tmean2),min(no2tmean2),sd(no2tmean2))
+
+ggplot(pm25_stats,aes(year,avg)) +
+geom_line(aes(color = "pm25")) +
+geom_line(data = pm10_stats,aes(color = "pm10")) +
+geom_line(data = o3_stats,aes(color = "o3")) +
+geom_line(data = no2_stats,aes(color = "no2")) +
+labs(title="Average pollutants by year", x="Year", color="Legend text")
+
+```
+
+1. The average of pollutants across years keeps decreasing for all of them from 1995  except o3. overall o3 shows an increase
+ 2. The yearly average of the pollutant no2 and pm10 follows a similar trend
+
+8. What are the average levels of Ozone (o3) within quintiles of PM25? Note you have to convert pm25 levels into quintile groups and strore these levels into a new variable -- call it `pm25.quint`. Use the `cut` fucntion that divides the range of x into intervals and codes the values in x according to which interval they fall. 
+
+
+```{r}
+chicago_clean$pm25.quint <- with(chicago_clean,cut(pm25tmean2,breaks = quantile(
+                          pm25tmean2, probs = seq(0,1,by=0.20),na.rm = TRUE),labels = c("1","2","3","4","5"),include.lowest = TRUE))
+
+chicago_clean %>%
+  group_by(pm25.quint) %>%
+  summarise(mean(o3tmean2))
+
+```
+## The average o3 for the lowest 20% of pm10 values is high compare to the next 20% and so on. This trend is followed for 4 quintiles
