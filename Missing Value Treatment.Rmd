@@ -1,8 +1,4 @@
-# Homework 1: Basic Data Wrangling
-
-Please use the pipe operator to represent composite tasks. 
-
-1. Load the dataset `chicago.rds` from moodle using the readRDS() function of R into a dataframe called `chicago`. Don't display the code to laod the file in the knitted document. The dataset contains air pollution data from Chicago from a period Jan 1987 till end of 2005. To learn more about these measures visit http://www.airnow.gov/index.cfm?action=aqibasics.particle   
+Load the dataset `chicago.rds` from using the readRDS() function of R into a dataframe called `chicago`. Don't display the code to laod the file in the knitted document. The dataset contains air pollution data from Chicago from a period Jan 1987 till end of 2005. To learn more about these measures visit http://www.airnow.gov/index.cfm?action=aqibasics.particle   
 ```{r,include=FALSE}
 library (dplyr)
 library(ggplot2)
@@ -13,7 +9,7 @@ library(zoo)
 chicago <- readRDS('C:/Users/Pranathi/Desktop/MSBA/Fall/Exploratory data analytics/Assignment 1/chicago.rds')
 ```
 
-2. Make sure the dataset is a dplyr object from here on. Perform basic data cleansing activities that deal with outliers, data entry errors and missing values if any.
+Make sure the dataset is a dplyr object from here on. Perform basic data cleansing activities that deal with outliers, data entry errors and missing values if any.
 
 ```{r}
 chicago_table <- tbl_df(chicago)
@@ -108,7 +104,7 @@ chicago_clean$o3tmean2 <- remove_outliers(chicago_clean$o3tmean2)
 chicago_clean$no2tmean2 <- remove_outliers(chicago_clean$no2tmean2)
 ```
 
-3. Extract and display those rows (dplyr will display first 10 rows and that is fine) that have a 'seemingly' high value of PM2.5. Note, I am deliberately using managerial speak here when I say 'seemingly' but its your job to translate this into something convincing. Think about dsiplaying 10 rows that have most meaning.
+Extract and display those rows (dplyr will display first 10 rows and that is fine) that have a 'seemingly' high value of PM2.5. Note, I am deliberately using managerial speak here when I say 'seemingly' but its your job to translate this into something convincing. Think about dsiplaying 10 rows that have most meaning.
 
 ```{r,warning=FALSE}
 ggplot(chicago_clean,aes(pm25tmean2))+geom_histogram()
@@ -126,7 +122,7 @@ high_pm25
 
 ```
 
-4. Explore this subset of high PM2.5 level days further and see if other factors in the data could be linked to these high PM2.5 days. What queries would you run?
+Explore this subset of high PM2.5 level days further and see if other factors in the data could be linked to these high PM2.5 days. What queries would you run?
 
 ```{r}
 ggplot(high_pm25, aes(pm10tmean2,pm25tmean2))+geom_line(size=1) 
@@ -159,7 +155,7 @@ cor(chicago_table[sapply(chicago_table, is.numeric)],use = "pairwise.complete.ob
 ```
 In the original data, pm25 is ~60% correlated with pm25 while in high pm25 value data the correlation is only 18%.Even in the case of other factors,the amount of correlation seems to be less compared to that of the original data.
 
-5. Create two new columns that normalize the PM2.5 column using z-score and the PM10 column using min-max normalization
+Create two new columns that normalize the PM2.5 column using z-score and the PM10 column using min-max normalization
 
 ```{r}
 chicago_clean <- chicago_clean %>%
@@ -168,13 +164,13 @@ chicago_clean <- chicago_clean %>%
                                                    -min(pm10tmean2)))
 ```
 
-6.  Using the command`year = as.POSIXlt(chicago$date)$year + 1900` add a new column for the year of the observation.
+Add a new column for the year of the observation.
 
 ```{r}
 chicago_clean$year = as.POSIXlt(chicago_clean$date)$year + 1900
 ```
 
-7. Present key summary statistics of the pollutants by year 
+Present key summary statistics of the pollutants by year 
 
 ```{r}
 pm25_stats <- chicago_clean %>%
@@ -205,11 +201,9 @@ labs(title="Average pollutants by year", x="Year", color="Legend text")
 ```
 
 1. The average of pollutants across years keeps decreasing for all of them from 1995  except o3. overall o3 shows an increase
- 2. The yearly average of the pollutant no2 and pm10 follows a similar trend
+2. The yearly average of the pollutant no2 and pm10 follows a similar trend
 
-8. What are the average levels of Ozone (o3) within quintiles of PM25? Note you have to convert pm25 levels into quintile groups and strore these levels into a new variable -- call it `pm25.quint`. Use the `cut` fucntion that divides the range of x into intervals and codes the values in x according to which interval they fall. 
-
-
+The average levels of Ozone (o3) within quintiles of PM25
 ```{r}
 chicago_clean$pm25.quint <- with(chicago_clean,cut(pm25tmean2,breaks = quantile(
                           pm25tmean2, probs = seq(0,1,by=0.20),na.rm = TRUE),labels = c("1","2","3","4","5"),include.lowest = TRUE))
